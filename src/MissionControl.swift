@@ -1,78 +1,65 @@
 import AppKit
 
-/// Fades the Desktop folders' glass out and in with Mission Control and App Exposé, where it stands and
-/// with the swipe, as macOS fades the Desktop's icons. (The glass is stationary, so that a click on the
-/// wallpaper leaves it in place; Mission Control would leave it showing too.)
-///
-/// A three-finger swipe reaches the Dock as a stream of private "dock swipe" events, which a listen-only
-/// event tap sees as well: how far the swipe has gone, 1 being all the way, and how fast it was going when
-/// let go. Mission Control follows it exactly, and the icons are as faded as it is far along (measured on
-/// macOS 26). Let go, it carries on at that speed to the end (or back, if the fingers were turning back).
-/// Opened or closed by a key, it runs a set course: see pressed. The Dock then says where it ended up, which
-/// also covers Mission Control opened any other way (a hot corner, a click), though only once it is done.
+/// Fades the glass like Desktop icons with Mission Control and App Exposé (stationary windows stay showing).
+/// Follows swipes through private "dock swipe" events; the Dock's own notifications settle where it ended up.
 final class MissionControlFade {
-    /// One for the whole process: its event taps and its thread live as long as the process does, so an agent switched
-    /// off and on again takes it up again rather than starting more of them. shortcut: while the glass is switched off
-    /// the taps (passing every event straight through) and the activity that keeps the agent from napping stay on; give
-    /// it a way to stop them if that ever matters.
+    /// One per process: its taps and thread live as long as the process, so the app switched back on reuses them.
+    /// shortcut: taps and the no-nap activity stay on while the glass is off, add a way to stop them if that matters.
     static let shared = MissionControlFade()
-    private(set) var shown: CGFloat = 1   // the glass's opacity now
-    private(set) var target: CGFloat = 1  // and where it is headed
-    var show: ((CGFloat) -> Void)?        // sets the glass's opacity (the agent's, while there is one)
-    private var open = false   // Mission Control or App Exposé shows, as the Dock says (or will, see expected)
-    private var front = false  // and it is App Exposé
-    private var expected = false  // open was flipped on letting go of a swipe, and the Dock has yet to say so
-    private var swipes = 0        // swipes begun: only the latest one's check counts
+    private(set) var shown: CGFloat = 1   // opacity now
+    private(set) var target: CGFloat = 1  // opacity heading to
+    var show: ((CGFloat) -> Void)?        // applies the opacity
+    private var open = false   // Mission Control or App Exposé is open (or about to be, see expected)
+    private var front = false  // it is App Exposé
+    private var expected = false  // open was guessed at a swipe's end; the Dock hasn't confirmed yet
+    private var swipes = 0        // only the latest gesture's check counts
     private var swipeEnds = Date.distantPast
-    private var from: CGFloat = 1     // the glass's opacity when the swipe began
-    private var ignoring = false      // this swipe goes nowhere: see swiped
+    private var from: CGFloat = 1     // opacity when the swipe began
+    private var ignoring = false      // this swipe goes nowhere, see swiped
     private var ramp: Timer?
     private var taps: [CFMachPort] = []
     private var observer: AXObserver?
-    // A napping background app is run late and in bursts: the glass was seen to freeze through
-    // a swipe and then jump. This keeps the agent awake and its timers exact; it costs nothing while idle.
+    // A napping background app runs late and in bursts: the glass froze through a swipe, then jumped. Free when idle.
     private let awake = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
                                                               reason: "The glass follows Mission Control's swipe as it happens")
 
-    init(show: ((CGFloat) -> Void)? = nil) {  // (tests make their own)
+    init(show: ((CGFloat) -> Void)? = nil) {  // tests make their own
         self.show = show
         listen()
         watchDock()
     }
 
-    /// One dock swipe event. progress: signed, up is negative; phase: 1 began, 2 moved, 4 let go, 8 cancelled;
-    /// speed: when let go, in progress per second.
-    /// A swipe moves Mission Control on from wherever it is, even part way through finishing the last one;
-    /// but one begun while it is still closing is let pass (measured on quick swipes).
+    /// progress: signed, up is negative (1 = all the way); phase: 1 began, 2 moved, 4 let go, 8 cancelled;
+    /// speed: progress per second at let-go. A swipe begun while Mission Control is still closing goes nowhere.
     func swiped(_ progress: CGFloat, _ phase: Int64, _ speed: CGFloat) {
         if phase == 1 {
             ignoring = !open && expected
-            if !ignoring { (swipes, swipeEnds, from) = (swipes + 1, .distantFuture, shown) }  // the Dock's word must not cut in
+            if !ignoring { (swipes, swipeEnds, from) = (swipes + 1, .distantFuture, shown) }  // Dock may not cut in
         }
         guard !ignoring else { return }
         let appExposeSwipe = UserDefaults(suiteName: "com.apple.dock")?.bool(forKey: "showAppExposeGestureEnabled") ?? false
-        let way: CGFloat = open ? (front ? -1 : 1) : progress < 0 ? -1 : appExposeSwipe ? 1 : 0  // the way that leads somewhere
+        let way: CGFloat = open ? (front ? -1 : 1) : progress < 0 ? -1 : appExposeSwipe ? 1 : 0  // useful direction
         let along = min(1, max(0, progress * way))
         if phase == 4 || phase == 8 {
-            let onward = speed * way  // shortcut: the Dock's choice guessed from the speed alone; its word puts it right
-            let end: CGFloat = (onward > 0) == open ? 1 : 0  // closing, or staying closed: all of the glass
+            // shortcut: the Dock's choice is guessed from speed alone (its word corrects it), refine if misses show
+            let onward = speed * way
+            let end: CGFloat = (onward > 0) == open ? 1 : 0  // closing or staying closed: full glass
             head(to: end, seconds: min(0.4, max(0.05, Double(abs(end - shown) / max(abs(onward), 0.01)))), front: way > 0)
         } else {
             fadeTo(min(1, max(0, from + (open ? along : -along))), 0)  // at once: events come as often as frames
         }
     }
 
-    /// A key pressed: F3 (Mission Control's key) opens or closes it, Escape closes it. Opened by a key, the
-    /// Desktop's icons fade out eased in and out from 0.07 s to 0.31 s after it; closed, back in from 0.03 s
-    /// to 0.25 s (measured frame by frame against the screen). The glass starts sooner (0.03 s, 0.015 s
-    /// closing, as measured), as its changes reach the screen that much later.
+    /// F3 toggles Mission Control, Escape closes it. Measured: icons fade out 0.07–0.31 s after the key, back in
+    /// 0.03–0.25 s. The glass leads by 0.03 s (0.015 s closing), as its changes reach the screen that much later.
     func pressed(_ key: Int64) {
-        guard key == 160 && !(open && front) || key == 53 && open else { return }  // F3 in App Exposé goes to Mission Control
+        // F3 in App Exposé goes to Mission Control
+        guard key == 160 && !(open && front) || key == 53 && open else { return }
         if open { head(to: 1, seconds: 0.22, after: 0.015, eased: true) } else { head(to: 0, seconds: 0.24, after: 0.04, eased: true) }
     }
 
-    /// Send the glass to `end` (1: Mission Control closed). A change is counted as done at once, so that a
-    /// quick next gesture is read the right way, and checked once the Dock should have said so.
+    /// `end` 1 is closed. Counted as done at once so a quick next gesture reads right; checked once the Dock should
+    /// have confirmed it.
     private func head(to end: CGFloat, seconds: Double, after delay: Double = 0, eased: Bool = false, front: Bool = false) {
         swipes += 1
         swipeEnds = Date() + delay + seconds
@@ -93,19 +80,18 @@ final class MissionControlFade {
         case "AXExposeExit": opened = false
         default: return  // AXExposeShowDesktop: the icons stay
         }
-        if expected && opened != open { return }  // late word of an earlier swipe; the last one is yet to be told
+        if expected && opened != open { return }  // late word of an earlier gesture
         expected = false
         open = opened
         if opened { front = name == "AXExposeShowFrontWindows" }
-        if Date() > swipeEnds { settle() }  // after a swipe, the glass is on its way already
+        if Date() > swipeEnds { settle() }  // during a gesture the glass is on its way already
     }
 
     private func settle() { fadeTo(open ? 0 : 1, 0.2) }
 
-    /// Go to `opacity` at once, or over `seconds` after `delay`, evenly or eased in and out, step by step from
-    /// a timer of our own: AppKit's window-opacity animations were seen to stall behind Mission Control.
+    /// Steps on its own timer: AppKit's window-opacity animations stall behind Mission Control.
     private func fadeTo(_ opacity: CGFloat, _ seconds: Double, after delay: Double = 0, eased: Bool = false) {
-        if opacity == target && (ramp != nil || shown == opacity) { return }  // on its way there, or there
+        if opacity == target && (ramp != nil || shown == opacity) { return }  // there, or on its way
         ramp?.invalidate()
         ramp = nil
         target = opacity
@@ -126,10 +112,8 @@ final class MissionControlFade {
         show?(opacity)
     }
 
-    /// The Dock's swipes (its own event type, 30) and the F3 and Escape keys. Filtering taps, which take only the
-    /// Accessibility permission (listening ones take Input Monitoring; an AppKit key monitor never sees F3, a
-    /// system shortcut). They let every event straight through, from a thread of their own, and hand only the
-    /// few that matter to the main thread: a busy agent must never hold up the keyboard or the Dock.
+    /// Taps for dock swipes (event type 30) and F3/Escape. Filtering taps need only Accessibility (listen-only ones
+    /// need Input Monitoring; AppKit never sees F3). Own thread, all events passed on: a busy app can't hold up input.
     private func listen() {
         let context = Unmanaged.passUnretained(self).toOpaque()
         Thread.detachNewThread { [self] in
@@ -139,11 +123,12 @@ final class MissionControlFade {
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     me.taps.forEach { CGEvent.tapEnable(tap: $0, enable: true) }
                 } else if type == .keyDown {
-                    let key = event.getIntegerValueField(.keyboardEventKeycode)  // only F3 and Escape are read; the rest pass untouched
+                    let key = event.getIntegerValueField(.keyboardEventKeycode)
                     if (key == 160 || key == 53) && event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
                         DispatchQueue.main.async { me.pressed(key) }
                     }
-                } else if event.getIntegerValueField(field(110)) == 23, event.getIntegerValueField(field(123)) == 2 {  // a dock swipe, up or down
+                } else if event.getIntegerValueField(field(110)) == 23, event.getIntegerValueField(field(123)) == 2 {
+                    // a vertical dock swipe
                     let swipe = (event.getDoubleValueField(field(124)), event.getIntegerValueField(field(132)), event.getDoubleValueField(field(129)))
                     DispatchQueue.main.async { me.swiped(swipe.0, swipe.1, swipe.2) }
                 }

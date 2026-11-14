@@ -1,13 +1,11 @@
 import AppKit
 
-// Finder's own picture of a glass folder: the glass's film and rim, still, and its sheets. In Finder windows, title bars,
-// Get Info and the image Finder drags it stands for the glass on its own; on the Desktop the folder's window takes it
-// back off the screen (the cover, Drop.swift; the patch, below, for the sheets) and draws the same film, rim and sheets
-// itself, over live frost (Glass.swift).
+// Finder's still picture of a glass folder: film, rim and sheets. Finder windows, Get Info and drags show it as is;
+// on the Desktop the glass window takes it back off (cover, patch) and draws the same over live frost.
 
-let iconSizes = [32, 64, 128, 256, 512]  // the pixel sizes Finder stores an icon at
+let iconSizes = [32, 64, 128, 256, 512]  // pixel sizes Finder stores an icon at
 
-// (x offset, y offset, degrees) for each sheet, back to front, indexed by sheet count.
+// (x offset, y offset, degrees) per sheet, back to front, indexed by sheet count.
 let sheetFans: [[(CGFloat, CGFloat, CGFloat)]] = [
     [],
     [(0, 0, 0)],
@@ -15,46 +13,40 @@ let sheetFans: [[(CGFloat, CGFloat, CGFloat)]] = [
     [(-62, 14, -9), (0, 0, 0), (60, 12, 8)],
 ]
 
-/// How much of a film the picture lays over the glass. A film 1 - gain opaque, of colour offset / (1 - gain), is exactly
-/// Control Center's tone over any backdrop; one opacity must serve all three channels, and red's is the most the frost
-/// under it can make up for (it can darken what it shows, never lighten it).
+/// A film `1 - gain` opaque gives Control Center's tone over any backdrop. One opacity serves all channels: the
+/// thinnest, as the frost under it can darken what it shows but never lighten it.
 let filmOpacity = 1 - tone.map(\.gain).max()!
 
-let pictureVersion = 7  // raise whenever the picture's drawing changes, so folders that have the old one get the new
+let pictureVersion = 7  // raise when the drawing changes, so folders with the old picture get the new one
 
-/// The film's colour: the one that comes closest to the live glass over Finder's dark and light window backgrounds
-/// alike, so that the picture looks right in Finder windows too. On the Desktop the frost under it makes up the rest.
+/// The film colour closest to the live glass over Finder's dark and light window backgrounds alike.
 func film(_ colour: String, _ tint: CGFloat) -> [CGFloat] {
-    let backdrops: [CGFloat] = [0.12, 1.0]  // Finder's dark and light window backgrounds
+    let backdrops: [CGFloat] = [0.12, 1.0]
     let seen = backdrops.map { seenThrough($0, rgb(colour), tint) }
     return (0..<3).map { c in
         min(1, max(0, zip(backdrops, seen).map { b, through in through[c] - b * (1 - filmOpacity) }.reduce(0, +) / 2 / filmOpacity))
     }
 }
 
-/// The folder as a Finder icon, drawn afresh at every size Finder stores: the film over its whole outline (the front
-/// pane is toned once, like the rest), its `sheets` (what it holds, as the live glass shows it: so Finder's windows and
-/// the image Finder drags show it too) under the front pane's film, and the rim's lit line along the outline and the
-/// front pane's top.
+/// The folder as a Finder icon, drawn at every size Finder stores: film, sheets under the front pane, rim.
 func icon(_ colour: String, _ tint: CGFloat, sheets: Int = 0) -> NSImage {
     let picture = NSImage(size: NSSize(width: units, height: units))
     for size in iconSizes {
         let bitmap = iconBitmap(size, colour, tint, sheets: sheets)
-        bitmap.size = NSSize(width: units, height: units)  // every size is the same picture, at a different sharpness
+        bitmap.size = NSSize(width: units, height: units)
         picture.addRepresentation(bitmap)
     }
     return picture
 }
 
-/// One of the sizes Finder stores, `size` pixels square.
 func iconBitmap(_ size: Int, _ colour: String, _ tint: CGFloat, sheets: Int = 0) -> NSBitmapImageRep {
     let area = CGRect(x: 0, y: 0, width: size, height: size)
     let tinted = film(colour, tint)
     let bitmap = drawn(area.size, area) {
-        NSColor(srgbRed: tinted[0], green: tinted[1], blue: tinted[2], alpha: filmOpacity).set()  // no shadow: the live glass has none
+        NSColor(srgbRed: tinted[0], green: tinted[1], blue: tinted[2], alpha: filmOpacity).set()
         outline(units, flipped: true).fill()
-        guard sheets > 0 else { return }  // (without sheets, exactly the picture the cover takes off: see the patch)
-        NSGraphicsContext.saveGraphicsState()  // above the front pane the sheets show whole; behind it, faintly, as through its frost
+        guard sheets > 0 else { return }  // no sheets: exactly what the cover takes off
+        NSGraphicsContext.saveGraphicsState()  // sheets whole above the front pane, faint behind it
         let above = NSBezierPath(rect: CGRect(x: -units, y: -units, width: 3 * units, height: 3 * units))
         above.append(frontOutline(units, flipped: true))
         above.windingRule = .evenOdd
@@ -70,7 +62,7 @@ func iconBitmap(_ size: Int, _ colour: String, _ tint: CGFloat, sheets: Int = 0)
         frontOutline(units, flipped: true).addClip()  // the front pane's film again, over the sheets only
         NSColor(srgbRed: tinted[0], green: tinted[1], blue: tinted[2], alpha: filmOpacity).set()
         let sheetArea = NSBezierPath()
-        sheetShapes(sheets, grownBy: 0).forEach { sheetArea.append($0) }  // (one direction each: overlaps filled once)
+        sheetShapes(sheets, grownBy: 0).forEach { sheetArea.append($0) }  // same winding: overlaps fill once
         sheetArea.fill()
         NSGraphicsContext.restoreGraphicsState()
     }
@@ -83,16 +75,14 @@ func iconBitmap(_ size: Int, _ colour: String, _ tint: CGFloat, sheets: Int = 0)
     return bitmap
 }
 
-/// The stored size Finder draws a `points` icon from at `scale` pixels to the point (measured: it rounds the icon up to
-/// 16, 32, 128, 256 or 512 points, at the screen's scale).
+/// The stored size Finder draws a `points` icon from. Measured: it rounds up to 16, 32, 128, 256 or 512 pt × scale.
 func storedSize(points: CGFloat, scale: CGFloat) -> Int {
     let rounded = CGFloat([16, 32, 128, 256, 512].first { CGFloat($0) >= points } ?? 512) * scale
     return iconSizes.first { CGFloat($0) >= rounded } ?? iconSizes.last!
 }
 
-/// Finder's picture as Finder puts it on screen for a `points` icon at `scale` pixels to the point, without sheets (the
-/// patch takes those off): the stored size it picks, scaled to the screen's pixels. shortcut: assumes Finder scales
-/// down as Core Graphics' high-quality interpolation does.
+/// Finder's picture as it lands on screen for a `points` icon, without sheets (the patch covers those).
+/// shortcut: assumes Finder scales like Core Graphics' high-quality interpolation, re-check if a ghost shows.
 func finderPicture(_ colour: String, _ tint: CGFloat, points: CGFloat, scale: CGFloat) -> CGImage {
     let stored = iconBitmap(storedSize(points: points, scale: scale), colour, tint)
     let pixels = Int((points * scale).rounded())
@@ -103,8 +93,7 @@ func finderPicture(_ colour: String, _ tint: CGFloat, points: CGFloat, scale: CG
     return canvas.makeImage()!
 }
 
-/// What the live glass makes of a grey backdrop: Control Center's tone, then (for a colour) the
-/// colour's hue and strength at that lightness, `tint` of the way, by CIColorBlendMode's sums.
+/// What the live glass makes of a grey backdrop: Control Center's tone, then the tint by CIColorBlendMode's sums.
 func seenThrough(_ white: CGFloat, _ colour: (CGFloat, CGFloat, CGFloat)?, _ tint: CGFloat) -> [CGFloat] {
     let toned = tone.map { $0.gain * white + $0.offset }
     guard let (r, g, b) = colour else { return toned }
@@ -116,7 +105,7 @@ func seenThrough(_ white: CGFloat, _ colour: (CGFloat, CGFloat, CGFloat)?, _ tin
     return zip(toned, hue).map { t, h in t + tint * (light + (h - light) * squeeze - t) }
 }
 
-// --- shared drawing ---
+// -- shared drawing
 
 /// The whole folder silhouette, tab included, scaled to `size`; y runs up unless flipped.
 func outline(_ size: CGFloat, flipped: Bool = false) -> NSBezierPath {
@@ -136,15 +125,14 @@ func outline(_ size: CGFloat, flipped: Bool = false) -> NSBezierPath {
     return path
 }
 
-/// The front pane, scaled to `size`; y runs up unless flipped. Its top edge runs at `frontTop` and,
-/// on the left, curves up by `frontSweep` into the folder's side (a corner turned inside out).
+/// The front pane, scaled to `size`; y runs up unless flipped. Its top-left corner curves up into the side.
 func frontOutline(_ size: CGFloat, flipped: Bool = false) -> NSBezierPath {
     let unit = size / units
     func at(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * unit, y: (flipped ? y : units - y) * unit) }
     let r = cornerRadius, s = frontSweep, top = frontTop, k: CGFloat = 0.5523  // k: a quarter circle as a curve
     let path = NSBezierPath()
     if s > 0 {
-        path.move(to: at(21, top - s))  // where the top edge has swept up into the side
+        path.move(to: at(21, top - s))
         path.curve(to: at(21 + s, top), controlPoint1: at(21, top - s + k * s), controlPoint2: at(21 + s - k * s, top))
     } else {
         path.move(to: at(21, top + r))
@@ -157,7 +145,7 @@ func frontOutline(_ size: CGFloat, flipped: Bool = false) -> NSBezierPath {
     return path
 }
 
-/// The sheets' outlines, back to front, in canvas units (y down), each `grownBy` units all round.
+/// The sheets' outlines, back to front, in canvas units (y down), each grown by `grownBy` units.
 func sheetShapes(_ sheets: Int, grownBy grow: CGFloat) -> [NSBezierPath] {
     sheetFans[min(sheets, sheetFans.count - 1)].map { dx, dy, degrees -> NSBezierPath in
         let turn = NSAffineTransform()
@@ -168,17 +156,17 @@ func sheetShapes(_ sheets: Int, grownBy grow: CGFloat) -> [NSBezierPath] {
     }
 }
 
-/// White sheets standing in the folder, in canvas units, each casting a soft shadow.
+/// White sheets in canvas units, each with a soft shadow.
 func drawSheets(_ sheets: Int) {
     let shapes = sheetShapes(sheets, grownBy: 0)
     for (behind, shape) in zip(stride(from: sheets - 1, through: 0, by: -1), shapes) {
         NSGraphicsContext.saveGraphicsState()
-        let shadow = NSShadow()  // shadows ignore the canvas scale, so blur and offset are in device pixels
+        let shadow = NSShadow()  // shadows ignore the canvas scale: blur and offset are in device pixels
         shadow.shadowColor = NSColor(white: 0, alpha: 0.25)
         shadow.shadowBlurRadius = 6
         shadow.shadowOffset = NSSize(width: 0, height: -2)
         shadow.set()
-        let grey = 1 - 0.03 * CGFloat(behind)  // the sheets further back are a little in shade
+        let grey = 1 - 0.03 * CGFloat(behind)  // sheets further back are a little darker
         NSColor(srgbRed: grey, green: grey, blue: grey, alpha: 0.95).set()
         shape.fill()
         NSGraphicsContext.restoreGraphicsState()
@@ -194,28 +182,25 @@ func drawn(_ size: CGSize, _ area: CGRect, _ draw: () -> Void) -> NSBitmapImageR
     NSGraphicsContext.saveGraphicsState()
     let context = NSGraphicsContext(bitmapImageRep: bitmap)!
     NSGraphicsContext.current = context
-    context.compositingOperation = .copy  // start from fully clear pixels
+    context.compositingOperation = .copy
     NSColor.clear.set()
     NSBezierPath.fill(CGRect(x: 0, y: 0, width: width, height: height))
     context.compositingOperation = .sourceOver
     let canvas = NSAffineTransform()
     canvas.translateX(by: area.minX, yBy: area.minY + area.height)
-    canvas.scaleX(by: area.width / units, yBy: -area.height / units)  // 512 units across, y running down
+    canvas.scaleX(by: area.width / units, yBy: -area.height / units)  // 512 units across, y down
     canvas.concat()
     draw()
     NSGraphicsContext.restoreGraphicsState()
     return bitmap
 }
 
-// -- Finder's sheets, taken back off on the Desktop
+// -- patch: Finder's sheets, taken back off on the Desktop
 
 let patchID = NSUserInterfaceItemIdentifier("patch")
 
-/// Finder's picture shows the folder's sheets, and those can't be taken off as the film is: they hide what lies under
-/// them. So on the Desktop a patch lies over them, in the folder's window just over the cover: the screen around them,
-/// blurred and made opaque again (as the stand-in is, Drop.swift), so that the frost, under the folder's own sheets
-/// (which lie exactly over Finder's), never sees Finder's, even as they dip and swell. `others`: what the stand-in keeps
-/// out of its sample too.
+/// Finder's sheets are opaque, so the cover can't take them off: a patch over them shows the screen around them,
+/// blurred and made opaque again (as the stand-in does), so the frost never sees them. `others`: left out of it.
 func addPatch(_ holder: NSView, icon: CGRect, others: [CGRect], sheets: [Int], scale: CGFloat) {
     guard let backdropClass = NSClassFromString("CABackdropLayer") as? CALayer.Type else { return }  // see addFrost
     let view = NSView(frame: holder.bounds)
@@ -240,10 +225,9 @@ func addPatch(_ holder: NSView, icon: CGRect, others: [CGRect], sheets: [Int], s
     setPatch(holder, sheets: sheets)
 }
 
-/// Lay the patch over as many sheets as Finder's picture now shows (none: no patch), and their shadows: 6 px of blur in
-/// the stored size Finder draws from, and 2 more; no further than the icon's square, which Finder's picture never leaves.
-/// Sampling around them, but not `others` (as the stand-in: cutStandIn). Either left out: as before.
-func setPatch(_ holder: NSView, sheets: [Int]? = nil, others: [CGRect]? = nil) {  // sheets: each count it may show
+/// Cover the sheets for each count in `sheets`, and their shadows (6 px of blur at the stored size, and 2 more),
+/// within the icon's square. Samples around them but not `others`. A nil argument keeps the last value.
+func setPatch(_ holder: NSView, sheets: [Int]? = nil, others: [CGRect]? = nil) {
     guard let made = views(holder, patchID).first?.layer?.sublayers?.first, let shown = made.mask as? CAShapeLayer,
           let sampled = made.sublayers?.first?.mask as? CAShapeLayer, let icon = (made.value(forKey: "liquidfolderIcon") as? NSValue)?.rectValue,
           let stored = made.value(forKey: "liquidfolderStored") as? Int else { return }
@@ -258,7 +242,7 @@ func setPatch(_ holder: NSView, sheets: [Int]? = nil, others: [CGRect]? = nil) {
         .intersection(CGPath(rect: icon, transform: nil))
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    made.isHidden = counts.allSatisfy { $0 == 0 }  // (nothing for the window server to do)
+    made.isHidden = counts.allSatisfy { $0 == 0 }
     shown.path = over
     sampled.path = CGPath(rect: made.bounds, transform: nil).subtracting(others.reduce(over) { $0.union(CGPath(rect: $1, transform: nil)) })
     CATransaction.commit()

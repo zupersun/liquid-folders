@@ -1,6 +1,7 @@
 import AppKit
 
-// Settings: one small file, folder path -> style.
+// Settings (one JSON file: folder path -> style) and folder helpers: icon stamps, item counts, colours,
+// watching, and Quick Action requests.
 
 var configURL = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Library/Application Support/LiquidFolder/folders.json")
@@ -29,10 +30,9 @@ func saveConfig(_ folders: [String: Style]) throws {
     try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    try encoder.encode(folders).write(to: configURL, options: .atomic)  // swapped in whole: never read half-written
+    try encoder.encode(folders).write(to: configURL, options: .atomic)  // never read half-written
 }
 
-/// Carry a folder's settings over to where it is now (it was renamed or moved).
 func renameInConfig(from old: String, to new: String) throws {
     var folders = try loadConfig()
     guard let style = folders.removeValue(forKey: old) else { return }
@@ -40,12 +40,12 @@ func renameInConfig(from old: String, to new: String) throws {
     try saveConfig(folders)
 }
 
-// Which look a folder's custom icon shows, written on its icon file: an icon is only ever replaced by a different one.
+// The look a custom icon shows, as an xattr on its icon file: an icon is only replaced by a different one.
 let stampName = "net.liquidfolder.look"
 
 func iconKey(_ style: Style, sheets: Int = 0) -> String { "\(pictureVersion) \(style.design) \(style.colour) \(style.tint) \(sheets)" }
 
-/// How many sheets the folder's custom icon shows, as stamped on it (none if it has no current one).
+/// Sheets the custom icon shows, per its stamp (0 if none or from an older picture version).
 func stampedSheets(_ folder: String) -> Int {
     iconStamp(folder).flatMap { $0.hasPrefix("\(pictureVersion) ") ? Int($0.split(separator: " ").last ?? "") : nil } ?? 0
 }
@@ -63,7 +63,6 @@ func setIconStamp(_ folder: String, _ key: String) {
     _ = setxattr(folder + "/" + iconFile, stampName, key, key.utf8.count, 0, 0)
 }
 
-/// Why this settings entry cannot be used, or nil if it is fine.
 func problemWith(path: String, style: Style) -> String? {
     var isFolder: ObjCBool = false
     if !FileManager.default.fileExists(atPath: path, isDirectory: &isFolder) || !isFolder.boolValue { return "not a folder" }
@@ -73,7 +72,7 @@ func problemWith(path: String, style: Style) -> String? {
     return nil
 }
 
-/// Visible items in a folder, counted only as far as the icon can show.
+/// Visible items, counted only up to `enough` (the icon shows no more).
 func countItems(_ path: String, enough: Int = 5) throws -> Int {
     guard let folder = opendir(path) else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     defer { closedir(folder) }
@@ -85,12 +84,11 @@ func countItems(_ path: String, enough: Int = 5) throws -> Int {
     return count
 }
 
-/// How many sheets a folder shows: none, one, two for a few items (2-4), three for many.
 func sheetCount(_ items: Int) -> Int {
     items < 1 ? 0 : items == 1 ? 1 : items < 5 ? 2 : 3
 }
 
-/// A path as the settings store it: absolute, with symbolic links resolved.
+/// A path as the settings store it: absolute, symlinks resolved.
 func resolved(_ path: String) -> String {
     let expanded = (path as NSString).expandingTildeInPath
     guard let real = realpath(expanded, nil) else { return URL(fileURLWithPath: expanded).standardizedFileURL.path }
@@ -98,7 +96,7 @@ func resolved(_ path: String) -> String {
     return String(cString: real)
 }
 
-// Apple's folder colours, in the order Finder's tag menu shows them. "clear" is plain glass, the default.
+// In Finder's tag menu order; "clear" is plain glass, the default.
 let colourNames = ["red", "orange", "yellow", "green", "mint", "teal", "cyan", "blue", "indigo", "purple", "pink",
                    "brown", "graphite", "clear"]
 
@@ -121,7 +119,7 @@ func systemColour(_ name: String) -> NSColor? {
     }
 }
 
-/// A colour's sRGB components, or nil for plain glass.
+/// sRGB components, or nil for plain glass.
 func rgb(_ name: String) -> (CGFloat, CGFloat, CGFloat)? {
     guard let colour = systemColour(name)?.usingColorSpace(.sRGB) else { return nil }
     return (colour.redComponent, colour.greenComponent, colour.blueComponent)
@@ -129,7 +127,7 @@ func rgb(_ name: String) -> (CGFloat, CGFloat, CGFloat)? {
 
 // -- watching a folder
 
-/// Watch `path` (followed if renamed) for `events`, on the main queue: `changed` gets what was seen and the handle.
+/// Watch `path` for `events` on the main queue; the handle follows renames.
 func watchPath(_ path: String, _ events: DispatchSource.FileSystemEvent,
                _ changed: @escaping (DispatchSource.FileSystemEvent, Int32) -> Void) -> DispatchSourceFileSystemObject? {
     let handle = open(path, O_EVTONLY)  // for change notifications only
@@ -141,8 +139,7 @@ func watchPath(_ path: String, _ events: DispatchSource.FileSystemEvent,
     return source
 }
 
-/// A glass folder was renamed or moved (to the Trash, too): its settings go with it. Its icon has gone with it already;
-/// the settings watch then lays it out afresh under its new name.
+/// A glass folder was renamed or moved (to the Trash too): its settings follow; the settings watch does the rest.
 func followMove(_ path: String, _ handle: Int32) {
     var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
     guard fcntl(handle, F_GETPATH, &buffer) == 0 else { return }
@@ -157,12 +154,10 @@ func removeFromConfig(_ path: String) throws {
     try saveConfig(folders)
 }
 
-/// The folder's colour tags, as stored (Finder redraws the folder plain for a moment when they change).
 func tagData(_ folder: String) -> Data? { attribute(folder, "com.apple.metadata:_kMDItemUserTags") }
 
-/// Whether the folder was given a look of the user's own in Finder (Customize Folder's colour or symbol, which macOS
-/// keeps in a "com.apple.icon.folder" attribute, or another icon in Get Info) or had its icon taken away.
-/// shortcut: the attribute's name was not seen on this Mac; another icon or a removed one is caught either way.
+/// Customised in Finder (Customize Folder's colour or symbol, or another icon in Get Info), or its icon removed.
+/// shortcut: the "com.apple.icon.folder" xattr name is unconfirmed, verify it on a Mac that uses Customize Folder.
 func customizedByUser(_ folder: String) -> Bool {
     let size = listxattr(folder, nil, 0, 0)
     var names = [CChar](repeating: 0, count: max(0, size))
@@ -180,9 +175,8 @@ private func attribute(_ file: String, _ name: String) -> Data? {
     return getxattr(file, name, &bytes, size, 0, 0) == size ? Data(bytes) : nil
 }
 
-/// Folders the Quick Actions asked for: "Liquify" and "Unliquify" leave their paths, a line each, in "liquify-*" and
-/// "unliquify-*" files next to the settings (no helper programs to start: at once). They are put in (or taken out of,
-/// with their normal icon back) the settings and the files removed; true if any were taken.
+/// Apply Quick Action requests: "liquify-*" and "unliquify-*" files beside the settings, one path per line
+/// (plain files, so no helper process has to start). True if any were taken.
 func takeRequests() -> Bool {
     let folder = configURL.deletingLastPathComponent()
     let requests = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
@@ -196,7 +190,7 @@ func takeRequests() -> Bool {
                 if folders.removeValue(forKey: path) != nil { NSWorkspace.shared.setIcon(nil, forFile: path, options: []) }
             } else if problemWith(path: path, style: Style()) == nil {
                 folders[path] = folders[path] ?? Style()
-                // A look of the user's own (Customize Folder's symbol or colour, another icon) goes: it would show over the glass.
+                // Drop any Finder customisation: it would show over the glass.
                 removexattr(path, "com.apple.icon.folder#S", 0)
                 if iconStamp(path) == nil { NSWorkspace.shared.setIcon(nil, forFile: path, options: []) }
             }

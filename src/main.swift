@@ -1,12 +1,14 @@
 import AppKit
 
+// Entry point: the liquidfolder command line, or the menu bar app when opened as a .app.
 let usage = """
 Liquid Glass folders for the macOS Desktop and Finder.
 
   liquidfolder add <folder> [--colour clear] [--tint 0.6]   opt a folder in, or change its look
   liquidfolder remove <folder>                              give a folder its normal icon back
   liquidfolder list                                         show opted-in folders
-  liquidfolder run                                          run the background agent
+  liquidfolder run                                          run the glass without the app
+  liquidfolder icon <folder.iconset>                        write the app's icon (build.sh uses it)
 
 Colours: \(colourNames.joined(separator: ", ")). Tint: 0 = ultra clear, 1 = fully tinted.
 """
@@ -34,8 +36,8 @@ func option(_ name: String) -> String? {
 switch arguments.first {
 case "run":
     NSApplication.shared.setActivationPolicy(.accessory)
-    let agent = Agent()
-    withExtendedLifetime(agent) { NSApplication.shared.run() }
+    let glass = Liquify()
+    withExtendedLifetime(glass) { NSApplication.shared.run() }
 
 case "list":
     var folders: [String: Style] = [:]
@@ -67,6 +69,18 @@ case nil where Bundle.main.bundlePath.hasSuffix(".app"):  // opened as the app: 
     let app = App()
     NSApplication.shared.delegate = app
     withExtendedLifetime(app) { NSApplication.shared.run() }
+
+case "icon":  // the glass folder with two sheets, at every size an app icon needs
+    guard arguments.count == 2 else { fail(usage) }
+    let set = URL(fileURLWithPath: arguments[1])
+    try? FileManager.default.createDirectory(at: set, withIntermediateDirectories: true)
+    for points in [16, 32, 128, 256, 512] {
+        for scale in [1, 2] {
+            let name = "icon_\(points)x\(points)\(scale == 2 ? "@2x" : "").png"
+            try? iconBitmap(points * scale, "clear", 0.6, sheets: 2).representation(using: .png, properties: [:])?
+                .write(to: set.appendingPathComponent(name))
+        }
+    }
 
 case "-h", "--help", nil:
     print(usage)

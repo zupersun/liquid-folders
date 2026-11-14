@@ -1,5 +1,5 @@
 // swift-tools-version:5.9
-// Build the app: ./build.sh   (or just the agent: swift build -c release; .build/release/liquidfolder run)
+// Build the app with ./build.sh
 import PackageDescription
 
 let package = Package(
