@@ -17,7 +17,7 @@ let sheetFans: [[(CGFloat, CGFloat, CGFloat)]] = [
 /// thinnest, as the frost under it can darken what it shows but never lighten it.
 let filmOpacity = 1 - tone.map(\.gain).max()!
 
-let pictureVersion = 7  // raise when the drawing changes, so folders with the old picture get the new one
+let pictureVersion = 8  // raise when the drawing changes, so folders with the old picture get the new one
 
 /// The film colour closest to the live glass over Finder's dark and light window backgrounds alike.
 func film(_ colour: String, _ tint: CGFloat) -> [CGFloat] {
@@ -55,8 +55,11 @@ func iconBitmap(_ size: Int, _ colour: String, _ tint: CGFloat, sheets: Int = 0)
         NSGraphicsContext.restoreGraphicsState()
         NSGraphicsContext.saveGraphicsState()
         frontOutline(units, flipped: true).addClip()
-        NSGraphicsContext.current?.cgContext.setAlpha(0.35)
+        let stack = NSGraphicsContext.current?.cgContext
+        stack?.setAlpha(0.35)  // the stack fades as one: its top sheet hides the ones behind, as real paper does
+        stack?.beginTransparencyLayer(auxiliaryInfo: nil)
         drawSheets(sheets)
+        stack?.endTransparencyLayer()
         NSGraphicsContext.restoreGraphicsState()
         NSGraphicsContext.saveGraphicsState()
         frontOutline(units, flipped: true).addClip()  // the front pane's film again, over the sheets only
