@@ -33,6 +33,7 @@ final class Liquify {
     private var pressing = false, lastPress: TimeInterval = 0
     private var iconDue: Set<String> = [], stepAsideTurn = 0
     private var tags: [String: Data?] = [:], givingUntil: [String: TimeInterval] = [:]
+    private var onDesktop = Set(desktopFolders().keys)  // the Desktop's folders (file IDs) last seen: newer ones become glass
     private var mouseUp: TimeInterval = 0         // the event's own clock, also uptime
     private var pressedAt = CGPoint.zero
     private var pressedOn: String?
@@ -98,6 +99,9 @@ final class Liquify {
         switch meaning {
         case .settings: applySettings()
         case .desktop:  // Finder re-sorts icons, and the stand-ins must clear new ones
+            let now = desktopFolders()  // (by file ID: a renamed folder isn't new)
+            liquifyArrivals(Set(now.filter { !onDesktop.contains($0.key) }.values))
+            onDesktop = Set(now.keys)
             othersChanged = true
             watchClosely(for: 0.6)
         case .folder(let path):

@@ -18,6 +18,8 @@ final class App: NSObject, NSApplicationDelegate {
         _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
         installQuickActions()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.autosaveName = "LiquidFolder"  // its own name for macOS to remember it by (not the default "Item-0")
+        item.isVisible = true
         item.button?.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Liquid Folder")
         item.menu = NSMenu()
         self.item = item
@@ -34,7 +36,7 @@ final class App: NSObject, NSApplicationDelegate {
         toggle.target = self
         menu.addItem(toggle)
         menu.addItem(.separator())
-        let uninstall = NSMenuItem(title: "Uninstall Liquid Folder…", action: #selector(uninstall), keyEquivalent: "")
+        let uninstall = NSMenuItem(title: "Uninstall", action: #selector(uninstall), keyEquivalent: "")
         uninstall.target = self
         menu.addItem(uninstall)
         item?.button?.appearsDisabled = !on

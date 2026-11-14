@@ -22,7 +22,7 @@ func installQuickActions() {
         let script = """
             d="$HOME/Library/Application Support/LiquidFolder"; mkdir -p "$d"
             printf '%s\\n' "$@" > "$d/\(request)-$$.tmp" && mv "$d/\(request)-$$.tmp" "$d/\(request)-$$"
-            pgrep -qx liquidfolder || open -g -b net.liquidfolder.app
+            pgrep -qx liquidfolder || open -g -b io.github.zupersun.liquidfolder
             """
         let action: [String: Any] = [
             "ActionBundlePath": "/System/Library/Automator/Run Shell Script.action", "BundleIdentifier": "com.apple.RunShellScript",

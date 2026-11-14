@@ -16,7 +16,7 @@ cat > "$app/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>net.liquidfolder.app</string>
+  <key>CFBundleIdentifier</key><string>io.github.zupersun.liquidfolder</string>
   <key>CFBundleName</key><string>Liquid Folder</string>
   <key>CFBundleExecutable</key><string>liquidfolder</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>

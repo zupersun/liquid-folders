@@ -200,3 +200,26 @@ func takeRequests() -> Bool {
     try? saveConfig(folders)
     return true
 }
+
+/// The Desktop's folders (not packages, not hidden), by file ID.
+func desktopFolders() -> [UInt64: String] {
+    let desktop = URL(fileURLWithPath: resolved("~/Desktop"))
+    let items = (try? FileManager.default.contentsOfDirectory(at: desktop, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+                                                              options: .skipsHiddenFiles)) ?? []
+    var folders: [UInt64: String] = [:]
+    for item in items where (try? item.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])).map({ $0.isDirectory == true && $0.isPackage != true }) == true {
+        var info = stat()
+        if stat(item.path, &info) == 0 { folders[UInt64(info.st_ino)] = resolved(item.path) }
+    }
+    return folders
+}
+
+/// New folders on the Desktop become glass, unless they have a look of their own (a custom icon, Customize Folder).
+func liquifyArrivals(_ folders: Set<String>) {
+    let plain = folders.filter { path in
+        !FileManager.default.fileExists(atPath: path + "/" + iconFile) && getxattr(path, "com.apple.icon.folder#S", nil, 0, 0, 0) < 0
+    }
+    guard !plain.isEmpty, var settings = try? loadConfig() else { return }
+    for path in plain where settings[path] == nil && problemWith(path: path, style: Style()) == nil { settings[path] = Style() }
+    try? saveConfig(settings)
+}
