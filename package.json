@@ -1,0 +1,11 @@
+{
+  "name": "liquid-folders",
+  "version": "1.0.0",
+  "description": "Liquid Glass folders for the macOS Desktop",
+  "homepage": "https://github.com/zupersun/liquid-folders",
+  "repository": { "type": "git", "url": "git+https://github.com/zupersun/liquid-folders.git" },
+  "license": "MIT",
+  "os": ["darwin"],
+  "files": ["install.sh"],
+  "scripts": { "postinstall": "zsh install.sh" }
+}
