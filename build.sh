@@ -2,13 +2,14 @@
 # Build "Liquid Folder.app" in .build/ (Apple silicon and Intel). `./build.sh zip` also packs it for a release.
 set -e
 cd "${0:A:h}"
-version=1.0.0  # a release is tagged v$version; the app updates itself to a newer tag
+version=1.0.1  # a release is tagged v$version; the app updates itself to a newer tag
 swift build -c release --arch arm64 --arch x86_64
 bin="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/liquidfolder"
 app=".build/Liquid Folder.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
 cp "$bin" "$app/Contents/MacOS/"
+strip -Sx "$app/Contents/MacOS/liquidfolder"  # debug info names this Mac's folders
 mkdir -p "$app/Contents/Resources"
 "$bin" icon .build/AppIcon.iconset
 iconutil -c icns .build/AppIcon.iconset -o "$app/Contents/Resources/AppIcon.icns"

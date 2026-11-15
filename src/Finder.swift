@@ -59,7 +59,9 @@ final class FinderDesktop {
         for group in groups {
             let (selected, answered) = ask(group, "AXSelectedChildren")
             guard answered else { return nil }
-            for icon in selected as? [AXUIElement] ?? [] { (attribute(icon, "AXFilename") as? String).map { names.insert($0) } }
+            for icon in selected as? [AXUIElement] ?? [] {
+                if let name = attribute(icon, "AXFilename") as? String { names.insert(name) }
+            }
         }
         return names
     }

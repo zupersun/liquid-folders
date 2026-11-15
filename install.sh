@@ -1,6 +1,8 @@
 #!/bin/zsh
-# Install Liquid Folder from the latest release into Applications and open it (npm runs this after install).
+# Install Liquid Folder from the latest release into Applications and open it: `npx liquid-folders` runs this every time
+# (a reinstall too); `npm install` only the first time, as npm skips a package it already has.
 set -e
+[[ $npm_lifecycle_event == postinstall && $npm_command == exec ]] && exit 0  # npx: it runs this as the command next
 [[ $(uname) == Darwin ]] || { echo "Liquid Folder is for macOS."; exit 0; }
 tmp=$(mktemp -d)
 curl -fsSL https://github.com/zupersun/liquid-folders/releases/latest/download/Liquid-Folder.zip -o "$tmp/app.zip"

@@ -16,6 +16,7 @@ final class App: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         defaults.register(defaults: [enabledKey: true])
+        let firstRun = !FileManager.default.fileExists(atPath: configURL.path)  // also after Uninstall
         if SMAppService.mainApp.status == .notRegistered { try? SMAppService.mainApp.register() }  // start at login
         // Accessibility: to read Finder's icon positions and follow Mission Control. macOS prompts the first time.
         _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
@@ -26,7 +27,9 @@ final class App: NSObject, NSApplicationDelegate {
         item.button?.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Liquid Folder")
         item.menu = NSMenu()
         self.item = item
+        if firstRun { liquifyArrivals(Set(desktopFolders().values)) }  // a fresh install makes the Desktop's folders glass
         if defaults.bool(forKey: enabledKey) { glass = Liquify() }
+        if !AXIsProcessTrusted() { startOnAccess() }
         updater.changed = { [weak self] in self?.rebuildMenu() }
         // The "Update Available" Quick Action leaves an "update-" file beside the settings.
         let folder = configURL.deletingLastPathComponent()
@@ -38,6 +41,17 @@ final class App: NSObject, NSApplicationDelegate {
             if !asked.isEmpty { self?.update() }
         }
         rebuildMenu()
+    }
+
+    /// Live glass needs Accessibility, which is granted after launch (macOS asks then): start it the moment it is.
+    private func startOnAccess() {
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            guard AXIsProcessTrusted() else { return }
+            timer.invalidate()
+            guard let self, glass != nil else { return }  // switched off: Liquify starts with access when switched on
+            glass = nil
+            glass = Liquify()
+        }
     }
 
     private func rebuildMenu() {
