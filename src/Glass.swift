@@ -313,7 +313,14 @@ func addGlass(_ tile: NSView, _ shape: NSBezierPath) {
     }
     let shift = NSAffineTransform()
     shift.translateX(by: -bounds.minX, yBy: -bounds.minY)  // _setPath: takes the glass's own coordinates
-    if !send(glass, "_setPath:", shift.transform(shape).cgPath) {
+    let path = shift.transform(shape).cgPath
+    if send(glass, "_setPath:", path) {
+        let edge = CAShapeLayer()  // its rim's glow speckles past the path at the lit corners, which bounds don't clip
+        edge.path = path
+        edge.frame = CGRect(origin: .zero, size: bounds.size)
+        glass.wantsLayer = true
+        glass.layer?.mask = edge
+    } else {
         glass.cornerRadius = cornerRadius * bounds.width / units
     }
     tile.addSubview(glass)

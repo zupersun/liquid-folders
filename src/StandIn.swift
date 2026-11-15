@@ -12,6 +12,7 @@ let standInReach: CGFloat = 0.8   // of icon size: how far around the icon it sa
 let standInID = NSUserInterfaceItemIdentifier("stand-in")
 // Under it, a finer stand-in for the band just past the folder's edge: so little blur that no frosted ring shows.
 let standInEdgeID = NSUserInterfaceItemIdentifier("stand-in edge")
+let pictureID = NSUserInterfaceItemIdentifier("stand-in picture")
 let edgeBlur: CGFloat = 0.05  // of icon size
 
 /// The screen around, blurred by `radius`, shown within `mask`. Alpha set to 1 after the blur divides colour by
@@ -51,7 +52,52 @@ func addStandIn(_ holder: NSView, icon: CGRect, others: [CGRect], selected: Bool
         holder.addSubview(view, positioned: .above, relativeTo: below)
         below = view
     }
+    let view = NSView(frame: holder.bounds)  // over both: the Desktop picture, once cut (setPicture)
+    view.layer = CALayer()
+    view.wantsLayer = true
+    view.identifier = pictureID
+    let shown = CALayer()
+    shown.frame = view.bounds
+    shown.opacity = 0
+    shown.actions = ["opacity": NSNull()]  // switched in the same commit as the cover and patch, never a frame apart
+    shown.mask = over()
+    shown.addSublayer(CALayer())
+    view.layer!.addSublayer(shown)
+    holder.addSubview(view, positioned: .above, relativeTo: below)
     cutStandIn(holder, icon: icon, others: others, selected: selected)
+}
+
+/// Give the glass the Desktop picture under it (`rect` in the holder; nil takes it away). Shown, it is exactly what
+/// Finder's icon hides, plain or not: the cover, patch and stand-in rest beneath it, and the frost sees the Desktop itself.
+func setPicture(_ holder: NSView, _ image: CGImage?, rect: CGRect = .zero) {
+    guard let shown = views(holder, pictureID).first?.layer?.sublayers?.first, let picture = shown.sublayers?.first else { return }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    picture.contents = image
+    picture.frame = rect
+    CATransaction.commit()
+    repick(holder)
+}
+
+/// Mission Control fades Finder's icons: the picture gives way to the cover, which fades as they do.
+func setFading(_ holder: NSView, _ fading: Bool) {
+    guard let shown = views(holder, pictureID).first?.layer?.sublayers?.first,
+          (shown.value(forKey: "liquidfolderFading") != nil) != fading else { return }  // set at every step of a swipe
+    shown.setValue(fading ? true : nil, forKey: "liquidfolderFading")
+    repick(holder)
+}
+
+/// Whether the picture shows: cut, the folder not selected (it would wipe Finder's box), not fading.
+private func pictured(_ holder: NSView) -> Bool {
+    guard let shown = views(holder, pictureID).first?.layer?.sublayers?.first else { return false }
+    return shown.sublayers?.first?.contents != nil && cutSelected(holder) != true && shown.value(forKey: "liquidfolderFading") == nil
+}
+
+/// Show what now fits, the stand-in as last set.
+private func repick(_ holder: NSView) {
+    let shown = views(holder, pictureID).first?.layer?.sublayers?.first
+    setStandIn(holder, shown?.value(forKey: "liquidfolderUp") as? Bool ?? false, once: true,
+               wide: shown?.value(forKey: "liquidfolderWide") as? Bool ?? true)
 }
 
 /// Cut what the stand-in samples: the screen around, minus the icon (as large as the plain one draws) and `others`.
@@ -84,6 +130,7 @@ func cutStandIn(_ holder: NSView, icon: CGRect, others: [CGRect], selected: Bool
     (views(holder, standInEdgeID).first?.layer?.sublayers?.first?.sublayers?.first?.mask as? CAShapeLayer)?.path = area.subtracting(edgeCuts)
     CATransaction.commit()
     setPatch(holder, others: others)
+    repick(holder)  // selected or not: picture or not
 }
 
 /// Whether the stand-in in `holder` was last cut for a selected folder.
@@ -124,10 +171,16 @@ func plainSilhouette(pixels: Int) -> CGImage? {
 
 /// Fade the stand-in in (`up`) or out, or switch at `once` (a window just laid out afresh). Stays until set again.
 /// `wide`: cover the plain icon as large as its drop and hover animations make it; else just the folder's outline.
+/// While the picture shows, it alone hides Finder's icon, and the cover and patch rest (their backdrops cost the most).
 func setStandIn(_ holder: NSView, _ up: Bool, once: Bool = false, wide: Bool = true) {
+    let shown = views(holder, pictureID).first?.layer?.sublayers?.first, pictured = pictured(holder)
+    shown?.setValue(up, forKey: "liquidfolderUp")
+    shown?.setValue(wide, forKey: "liquidfolderWide")
+    shown?.opacity = pictured ? 1 : 0
+    (views(holder, coverID) + views(holder, patchID)).forEach { $0.isHidden = pictured }
     for layer in (views(holder, standInEdgeID) + views(holder, standInID)).compactMap({ $0.layer?.sublayers?.first }) {
         let middle = layer.superlayer === views(holder, standInID).first?.layer
-        let from = layer.presentation()?.opacity ?? layer.opacity, to: Float = up ? 1 : 0
+        let from = layer.presentation()?.opacity ?? layer.opacity, to: Float = up && !pictured ? 1 : 0
         CATransaction.begin()  // opacity and fade together, or the new opacity shows a frame early
         CATransaction.setDisableActions(true)
         if up, middle, let mask = layer.mask {  // the mask is made wide; scaled down it hugs the outline

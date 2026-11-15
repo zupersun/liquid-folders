@@ -58,6 +58,7 @@ func fade(_ holder: NSView, _ opacity: CGFloat) {
     CATransaction.setDisableActions(true)
     for id in [coverID, patchID, standInEdgeID, standInID, swellID] { views(holder, id).forEach { $0.layer?.opacity = Float(opacity) } }
     CATransaction.commit()
+    setFading(holder, opacity < 1)
 }
 
 func fadeIn(_ view: NSView) {

@@ -7,6 +7,9 @@ import AppKit
 final class FinderDesktop {
     let allowed = AXIsProcessTrusted()
     private var icons: [String: AXUIElement] = [:]  // by file name
+    private var groups: [AXUIElement] = []          // the Desktop's icon views, whose selection is watched
+    /// The Desktop selection changed: a click, a selection box, the keyboard. Not heard during a drag.
+    var selectionChanged: (() -> Void)?
 
     init() {
         // The default 6 s wait on a Finder busy with a drag would freeze the glass.
@@ -47,6 +50,18 @@ final class FinderDesktop {
     func selected(_ name: String) -> Bool? {
         guard allowed, !quiet, let icon = icons[name] else { return nil }
         return ask(icon, "AXSelected").value as? Bool
+    }
+
+    /// The selected Desktop items' file names; nil if Finder won't say.
+    func selectedNames() -> Set<String>? {
+        guard allowed, !quiet else { return nil }
+        var names = Set<String>()
+        for group in groups {
+            let (selected, answered) = ask(group, "AXSelectedChildren")
+            guard answered else { return nil }
+            for icon in selected as? [AXUIElement] ?? [] { (attribute(icon, "AXFilename") as? String).map { names.insert($0) } }
+        }
+        return names
     }
 
     /// Clears the Desktop selection after "Liquify", so the new glass shows as it will stay.
@@ -146,6 +161,10 @@ final class FinderDesktop {
     }
 
     private func heard(_ element: AXUIElement, _ notification: String) {
+        if notification == kAXSelectedChildrenChangedNotification {  // after a drag, layout asks anyway
+            if !quiet { selectionChanged?() }
+            return
+        }
         if quiet && !(notification == kAXUIElementDestroyedNotification && titles.keys.contains(element)) {
             // a known window's close needs nothing from Finder
             if notification != kAXUIElementDestroyedNotification { unheard.append((element, notification)) }
@@ -219,7 +238,7 @@ final class FinderDesktop {
             let (value, answered) = ask(element, "AXChildren")
             return answered ? value as? [AXUIElement] ?? [] : nil
         }
-        var found: [String: AXUIElement] = [:], desktop = false
+        var found: [String: AXUIElement] = [:], desktop = false, views: [AXUIElement] = []
         guard let areas = kids(AXUIElementCreateApplication(finder.processIdentifier)) else { return false }
         for area in areas {  // the Desktop's; the other is the menu bar's
             let (role, answered) = ask(area, "AXRole")
@@ -228,6 +247,7 @@ final class FinderDesktop {
             desktop = true
             guard let groups = kids(area) else { return false }
             for group in groups {
+                views.append(group)
                 guard let icons = kids(group) else { return false }
                 for icon in icons {
                     let (name, answered) = ask(icon, "AXFilename")
@@ -239,6 +259,12 @@ final class FinderDesktop {
         guard desktop else { return false }
         missingSince = nil
         icons = found
+        groups = views
+        if let observer {
+            for group in views {
+                AXObserverAddNotification(observer, group, kAXSelectedChildrenChangedNotification as CFString, Unmanaged.passUnretained(self).toOpaque())
+            }
+        }
         return true
     }
 }

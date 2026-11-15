@@ -13,8 +13,10 @@ final class Liquify {
     private var folders: [String: Style] = [:]
     private var shown: [String: Look] = [:]
     private var counts: [String: Int] = [:]
-    private var tiles: [String: GlassWindow] = [:]
-    private var icons: [String: CGRect] = [:]      // Finder's icon frame, on screen, y up
+    var tiles: [String: GlassWindow] = [:]         // (these, and finder, also used in Wallpaper.swift)
+    var icons: [String: CGRect] = [:]              // Finder's icon frame, on screen, y up
+    let pictures = Pictures()                      // the Desktop picture under each (setPicture)
+    var awaiting: [String: Bool] = [:]             // windows held back for their picture: fade in once shown?
     private var opened: String?                    // the folder tipped open: something is dragged over it
     // Deadlines are in uptime: a wall clock set back would stall them.
     private var settling: [String: TimeInterval] = [:]    // a drop plays on the folder
@@ -42,7 +44,7 @@ final class Liquify {
     private var dragEnded: TimeInterval = 0
     private var iconTurn: [String: Int] = [:], clearedAt: [String: TimeInterval] = [:]
     private let dragBoard = NSPasteboard(name: .drag)
-    private let finder = FinderDesktop()
+    let finder = FinderDesktop()
 
     init() {
         try? FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -57,13 +59,14 @@ final class Liquify {
         tokens.append((NotificationCenter.default, NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                                 object: nil, queue: .main) { [weak self] _ in self?.watchClosely(for: 0.6) }))
         tokens.append((NSWorkspace.shared.notificationCenter, NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
-                                                                           object: nil, queue: .main) { [weak self] _ in self?.layoutSoon() }))
+                                                                           object: nil, queue: .main) { [weak self] _ in self?.cutPictures(); self?.layoutSoon() }))  // its own wallpaper?
         if !finder.allowed {
             print("Without Accessibility permission, icons will update but there will be no live glass on the Desktop.")
         }
         dragCount = dragBoard.changeCount
         missionControl.show = { [weak self] opacity in self?.tiles.values.forEach { $0.contentView.map { fade($0, opacity) } } }
         finder.windowChanged = { [weak self] title in self?.windowChanged(title) }
+        finder.selectionChanged = { [weak self] in self?.selectionChanged() }
         // Mid-drag no window title can be read: a spring-loaded window is for the open folder, else it could be any.
         finder.windowChangedQuietly = { [weak self] in
             guard let self else { return }
@@ -281,6 +284,8 @@ final class Liquify {
     private func remove(_ path: String) {
         tiles.removeValue(forKey: path)?.orderOut(nil)
         icons[path] = nil
+        pictures.forget(path)
+        awaiting[path] = nil
         if opened == path { opened = nil }
     }
 
@@ -438,6 +443,7 @@ final class Liquify {
                 // (moving and showing in one turn flashed a frame at the old place).
                 window.setFrameOrigin(CGPoint(x: frame.minX - room(icon), y: frame.minY - room(icon)))
                 icons[path] = frame
+                givePicture(path)  // the old one is cut for the old place
                 tiled[path] = state
                 moved = true
             }
@@ -465,7 +471,11 @@ final class Liquify {
                                      selected: finder.selected((path as NSString).lastPathComponent) ?? (tiles[path]?.contentView.flatMap(cutSelected) ?? false),
                                      colour: look.style.colour, tint: look.style.tint, sheets: look.sheets, finderSheets: [stampedSheets(path), look.sheets], scale: scale)
             if (standingIn[path] ?? 0) > now { setStandIn(holder, true, once: true, wide: finder.quiet || now - dragEnded < 1.5) }
-            if stepped { holder.alphaValue = 0 }  // fades in below: no full-strength first frame
+            let rect = pictureRect(frame, scale: scale), picture = pictures.picture(path, rect)
+            setPicture(holder, picture, rect: rect.offsetBy(dx: -around.minX, dy: -around.minY))
+            // Without its picture the glass would change as it comes: held back until cut (Finder's icon shows).
+            let held = picture == nil && reused == nil && (stepped || (standingIn[path] ?? 0) > now) && pictures.usable
+            if stepped || held { holder.alphaValue = 0 }  // fades in below: no full-strength first frame
             fade(holder, missionControl.shown)
             if let reused {
                 reused.setFrame(around, display: false)
@@ -476,10 +486,14 @@ final class Liquify {
             }
             icons[path] = frame
             if let tile = views(holder, tileID).first { tune(tile, tries: 10) }
-            if stepped { tiles[path]?.contentView.map(fadeIn) }
+            if held {
+                awaiting[path] = stepped
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.reveal(path) }  // not cut by then
+            } else if stepped { tiles[path]?.contentView.map(fadeIn) }
         }
         for window in tiles.values where window.contentView?.isHidden == true {
             window.contentView.map(fadeIn)  // stepped aside, but its icon did not move
         }
+        cutPictures()
     }
 }
