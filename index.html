@@ -10,17 +10,13 @@
 <meta property="og:image" content="https://zupersun.github.io/liquid-folders/poster.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500&family=Geist+Mono&display=swap" rel="stylesheet">
 <style>
   :root {
     --ink: #f4f6fa;
     --muted: rgba(244, 246, 250, 0.62);
-    --glass: rgba(255, 255, 255, 0.08);
     --rim: rgba(255, 255, 255, 0.22);
-    --rim-soft: rgba(255, 255, 255, 0.1);
     --night: #0c1018;
+    --rest: 408px; /* height of everything but the video, so the video fills what's left */
   }
   * { box-sizing: border-box; }
   html { background: var(--night); }
@@ -28,7 +24,7 @@
     margin: 0;
     min-height: 100vh;
     color: var(--ink);
-    font: 400 16px/1.6 "Geist", -apple-system, sans-serif;
+    font: 400 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   /* The demo's own Desktop, blurred, behind everything: the page sits on the wallpaper like the folders do. */
@@ -37,90 +33,73 @@
     background: url(poster.jpg) center / cover;
     filter: blur(48px) saturate(1.25) brightness(0.55);
   }
-  main { max-width: 920px; margin: 0 auto; padding: 72px 16px 48px; }
+  /* One screen, no scroll: the video takes whatever height the rest leaves. */
+  main { min-height: 100vh; min-height: 100svh; padding: 36px 16px 24px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
   header { text-align: center; }
-  header img { width: 88px; height: 88px; filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.35)); }
   h1 {
-    margin: 12px 0 0;
-    font: 400 clamp(52px, 9vw, 88px)/1 "Instrument Serif", serif;
-    letter-spacing: -0.01em;
+    margin: 0;
+    font: 700 clamp(40px, 6vw, 60px)/1.1 -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+    letter-spacing: -0.025em;
   }
-  h1 em { font-style: italic; }
-  .tagline { margin: 14px 0 0; font-size: 19px; color: var(--muted); }
+  .tagline { margin: 8px 0 0; font-size: 18px; color: var(--muted); }
 
+  /* Liquid glass: frost, rim light and a specular sheen. */
   .glass {
-    background: var(--glass);
-    border: 1px solid var(--rim-soft);
-    border-top-color: var(--rim);
-    -webkit-backdrop-filter: blur(24px) saturate(1.6);
-    backdrop-filter: blur(24px) saturate(1.6);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 20px 50px rgba(0, 0, 0, 0.3);
+    position: relative; isolation: isolate;
+    background: rgba(18, 20, 24, 0.22);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
+    backdrop-filter: blur(16px) saturate(170%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), inset 0 -1px 0 rgba(255, 255, 255, 0.1),
+                inset 1px 0 0 rgba(255, 255, 255, 0.14), inset -1px 0 0 rgba(255, 255, 255, 0.14),
+                0 10px 34px rgba(0, 0, 0, 0.28);
+  }
+  .glass::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0) 70%, rgba(255, 255, 255, 0.08));
   }
 
-  .demo { margin: 44px 0 0; padding: 8px; border-radius: 22px; }
+  /* Sized so the window's bottom edge cuts through it (about 80% showing), inviting a scroll. */
+  .demo {
+    width: min(100%, 1280px, calc((100vh - var(--rest)) * 1660 / 1080 + 16px));
+    width: min(100%, 1280px, calc((100svh - var(--rest)) * 1660 / 1080 + 16px));
+    margin: 28px auto 0; padding: 8px; border-radius: 22px;
+  }
   .demo video { display: block; width: 100%; height: auto; aspect-ratio: 1660 / 1080; border-radius: 15px; background: #000; }
 
-  .get { margin-top: 40px; text-align: center; }
+  .get { margin-top: 28px; text-align: center; }
   .download {
     display: inline-flex; align-items: center; gap: 10px;
     padding: 14px 30px; border-radius: 999px;
-    color: var(--ink); text-decoration: none; font-weight: 500; font-size: 17px;
+    color: var(--ink); text-decoration: none; font-weight: 600; font-size: 17px;
     transition: transform 0.2s, background 0.2s;
   }
   .download:hover { background: rgba(255, 255, 255, 0.16); transform: translateY(-1px); }
-  .download:focus-visible, .copy:focus-visible, footer a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .download:focus-visible, footer a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   .download svg { width: 18px; height: 18px; }
   .requires { margin: 14px 0 0; font-size: 14px; color: var(--muted); }
+  .requires.hint { margin-top: 2px; font-size: 13px; opacity: 0.75; }
 
-  .panels { display: grid; grid-template-columns: 1fr 1.25fr; gap: 16px; margin-top: 48px; }
-  .panel { min-width: 0; border-radius: 20px; padding: 24px 26px; }
-  h2 { margin: 0 0 14px; font: italic 400 28px/1.1 "Instrument Serif", serif; }
-  ol { margin: 0; padding-left: 20px; }
-  li { margin: 0 0 10px; color: var(--muted); }
-  li::marker { color: var(--ink); }
-  b { color: var(--ink); font-weight: 500; }
-
-  .label { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
-  .label + .cmd { margin-bottom: 16px; }
-  .cmd {
-    position: relative; display: flex;
-    padding: 10px 14px; border-radius: 12px;
-    background: rgba(0, 0, 0, 0.28); border: 1px solid var(--rim-soft);
-  }
-  .cmd code { min-width: 0; font: 13.5px/1.5 "Geist Mono", ui-monospace, monospace; white-space: pre; overflow-x: auto; }
-  .copy {
-    position: absolute; top: 7px; right: 7px; padding: 4px 10px; border-radius: 8px; cursor: pointer;
-    font: 500 12px "Geist", sans-serif; color: var(--muted);
-    background: rgba(12, 16, 24, 0.85); border: 1px solid var(--rim-soft);
-  }
-  .copy:hover { color: var(--ink); border-color: var(--rim); }
-
-  footer { margin-top: 56px; text-align: center; font-size: 14px; color: var(--muted); }
-  footer a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--rim); }
-  footer a:hover { border-color: var(--ink); }
+  footer { margin-top: 24px; text-align: center; font-size: 14px; }
+  footer a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--rim); }
+  footer a:hover { color: var(--ink); border-color: var(--ink); }
 
   /* Page load: rise in, staggered. */
   .rise { animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
   .rise:nth-child(2) { animation-delay: 0.08s; }
   .rise:nth-child(3) { animation-delay: 0.16s; }
   .rise:nth-child(4) { animation-delay: 0.24s; }
-  .rise:nth-child(5) { animation-delay: 0.32s; }
   @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
   @media (prefers-reduced-motion: reduce) { .rise { animation: none; } .download { transition: none; } }
 
-  @media (max-width: 720px) {
-    main { padding-top: 48px; }
-    .panels { grid-template-columns: 1fr; }
-  }
 </style>
 </head>
 <body>
 <div class="wallpaper" aria-hidden="true"></div>
 <main>
   <header class="rise">
-    <img src="icon.png" alt="">
-    <h1>Liquid <em>Folders</em></h1>
+    <h1>Liquid Folders</h1>
     <p class="tagline">Make your macOS folders Liquid Glass</p>
   </header>
 
@@ -134,31 +113,12 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>
       Download for Mac
     </a>
-    <p class="requires">Free · macOS 26 (Tahoe) or later · Apple silicon or Intel</p>
+    <p class="requires">macOS 26 (Tahoe) or later · Apple silicon or Intel</p>
+    <p class="requires hint">Won't open? System Settings → Privacy &amp; Security → Open Anyway</p>
   </section>
 
-  <div class="panels rise">
-    <section class="panel glass">
-      <h2>Getting started</h2>
-      <ol>
-        <li>Unzip and drag <b>Liquid Folder</b> into <b>Applications</b>, then open it.</li>
-        <li>If macOS can't verify it: <b>System Settings → Privacy &amp; Security</b>, then <b>Open Anyway</b>.</li>
-        <li>Allow it under <b>Privacy &amp; Security → Accessibility</b>.</li>
-        <li><b>Right-click</b> a folder → <b>Quick Actions → Liquify</b>.</li>
-      </ol>
-    </section>
-    <section class="panel glass">
-      <h2>Or use Terminal</h2>
-      <p class="label">npm</p>
-      <div class="cmd"><code>npm install liquid-folders</code><button class="copy" type="button">Copy</button></div>
-      <p class="label">Homebrew</p>
-      <div class="cmd"><code>brew trust zupersun/tap
-brew install --cask zupersun/tap/liquid-folders</code><button class="copy" type="button">Copy</button></div>
-    </section>
-  </div>
-
   <footer class="rise">
-    <a href="https://github.com/zupersun/liquid-folders">GitHub</a> · Open source, MIT
+    <a href="https://github.com/zupersun/liquid-folders">GitHub</a>
   </footer>
 </main>
 <script>
@@ -167,17 +127,6 @@ brew install --cask zupersun/tap/liquid-folders</code><button class="copy" type=
     video.removeAttribute("autoplay");
     video.pause();
     video.controls = true;
-  }
-  for (const button of document.querySelectorAll(".copy")) {
-    button.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(button.previousElementSibling.textContent);
-        button.textContent = "Copied";
-      } catch {
-        button.textContent = "Press ⌘C";
-      }
-      setTimeout(() => (button.textContent = "Copy"), 1500);
-    });
   }
 </script>
 </body>
