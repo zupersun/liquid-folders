@@ -29,9 +29,9 @@ cat > "$app/Contents/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
-# SIGN="Apple Development" keeps macOS permissions across rebuilds and updates (ad hoc, each build is a new app to them),
-# and the app only installs an update signed like itself, so sign every release the same way. A download for others
-# still shows Open Anyway the first time: that needs a Developer ID signature and notarization.
+# Sign every release with SIGN="Liquid Folders", the self-signed certificate in the login keychain (no personal details
+# in it): the app only installs an update signed like itself, and macOS keeps its permissions across updates (ad hoc,
+# each build is a new app to both). A download still shows Open Anyway the first time: that needs Developer ID.
 codesign --force --sign "${SIGN:--}" "$app"
 echo "$app"
 if [[ $1 == zip ]]; then
