@@ -2,6 +2,7 @@
 # Build "Liquid Folder.app" in .build/ (Apple silicon and Intel). `./build.sh zip` also packs it for a release.
 set -e
 cd "${0:A:h}"
+version=1.0.0  # a release is tagged v$version; the app updates itself to a newer tag
 swift build -c release --arch arm64 --arch x86_64
 bin="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/liquidfolder"
 app=".build/Liquid Folder.app"
@@ -21,15 +22,16 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>CFBundleExecutable</key><string>liquidfolder</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0.0</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>LSUIElement</key><true/>
 </dict>
 </plist>
 EOF
-# SIGN="Apple Development" keeps macOS permissions across rebuilds (ad hoc, each build is a new app to them); a download
-# for others needs a Developer ID signature and notarization.
+# SIGN="Apple Development" keeps macOS permissions across rebuilds and updates (ad hoc, each build is a new app to them),
+# and the app only installs an update signed like itself, so sign every release the same way. A download for others
+# still shows Open Anyway the first time: that needs a Developer ID signature and notarization.
 codesign --force --sign "${SIGN:--}" "$app"
 echo "$app"
 if [[ $1 == zip ]]; then

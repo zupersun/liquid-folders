@@ -2,7 +2,7 @@ import AppKit
 import ServiceManagement
 
 // Menu bar app: starts at login with no Dock icon, asks for Accessibility, installs the Quick Actions,
-// and offers an on/off switch and an uninstaller.
+// and offers an on/off switch, updates and an uninstaller.
 
 let enabledKey = "enabled"  // off keeps the folder list but shows no glass
 
@@ -10,6 +10,9 @@ final class App: NSObject, NSApplicationDelegate {
     private var glass: Liquify?
     private var item: NSStatusItem?
     private var defaults: UserDefaults { .standard }
+    private let updater = Updater()
+    private var updating = false
+    private var requests: DispatchSourceFileSystemObject?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         defaults.register(defaults: [enabledKey: true])
@@ -24,6 +27,16 @@ final class App: NSObject, NSApplicationDelegate {
         item.menu = NSMenu()
         self.item = item
         if defaults.bool(forKey: enabledKey) { glass = Liquify() }
+        updater.changed = { [weak self] in self?.rebuildMenu() }
+        // The "Update Available" Quick Action leaves an "update-" file beside the settings.
+        let folder = configURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        requests = watchPath(folder.path, [.write]) { [weak self] _, _ in
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            let asked = names.filter { $0.hasPrefix("update-") && !$0.hasSuffix(".tmp") }
+            for name in asked { try? FileManager.default.removeItem(at: folder.appendingPathComponent(name)) }
+            if !asked.isEmpty { self?.update() }
+        }
         rebuildMenu()
     }
 
@@ -31,15 +44,66 @@ final class App: NSObject, NSApplicationDelegate {
         guard let menu = item?.menu else { return }
         menu.removeAllItems()
         let on = defaults.bool(forKey: enabledKey)
-        let toggle = NSMenuItem(title: "Liquid Glass", action: #selector(toggle), keyEquivalent: "")
+        let toggle = NSMenuItem(title: "Liquify", action: #selector(toggle), keyEquivalent: "")
         toggle.state = on ? .on : .off
         toggle.target = self
         menu.addItem(toggle)
+        let available = updater.available != nil
+        if available {
+            let update = NSMenuItem(title: updating ? "Updating…" : "Update Available", action: updating ? nil : #selector(update),
+                                    keyEquivalent: "")
+            update.target = self
+            update.onStateImage = dot(8)  // in the checkmark's place, left of the title
+            update.state = .on
+            menu.addItem(update)
+        }
         menu.addItem(.separator())
         let uninstall = NSMenuItem(title: "Uninstall", action: #selector(uninstall), keyEquivalent: "")
         uninstall.target = self
         menu.addItem(uninstall)
         item?.button?.appearsDisabled = !on
+        showBadge(available && !updating)
+        showUpdateAction(available && !updating)
+    }
+
+    @objc private func update() {
+        guard updater.available != nil, !updating else { return }
+        updating = true
+        rebuildMenu()
+        updater.install { [weak self] problem in
+            guard let self else { return }
+            updating = false
+            rebuildMenu()
+            let alert = NSAlert()
+            alert.messageText = "Couldn't update Liquid Folder"
+            alert.informativeText = problem
+            alert.addButton(withTitle: "Download Manually")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn {
+                NSWorkspace.shared.open(URL(string: "https://github.com/zupersun/liquid-folders/releases/latest")!)
+            }
+        }
+    }
+
+    /// A blue dot on the menu bar icon while an update waits. A view over the icon, so the icon stays a template.
+    private func showBadge(_ shown: Bool) {
+        guard let button = item?.button else { return }
+        let id = NSUserInterfaceItemIdentifier("badge")
+        button.subviews.first { $0.identifier == id }?.removeFromSuperview()
+        guard shown else { return }
+        let badge = NSImageView(image: dot(6))
+        badge.identifier = id
+        badge.frame = NSRect(x: button.bounds.maxX - 8, y: button.isFlipped ? 3 : button.bounds.maxY - 9, width: 6, height: 6)
+        button.addSubview(badge)
+    }
+
+    private func dot(_ size: CGFloat) -> NSImage {
+        NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            NSColor.controlAccentColor.setFill()
+            NSBezierPath(ovalIn: rect).fill()
+            return true
+        }
     }
 
     @objc private func toggle() {
