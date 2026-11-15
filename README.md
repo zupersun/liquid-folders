@@ -4,7 +4,18 @@ Make your macOS folders Liquid Glass
 
 https://github.com/user-attachments/assets/a6c25acf-bcd0-4c5b-b83d-fe039ed1743f
 
-> Requires macOS 26 (Tahoe) or later, on Apple silicon or Intel
+<br>
+
+<div align="center">
+
+[![Download for Mac](https://img.shields.io/badge/Download_for_Mac-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/zupersun/liquid-folders/releases/latest/download/Liquid-Folder.zip)<br>
+<sub>macOS 26 (Tahoe) or later • Apple silicon or Intel</sub>
+
+</div>
+
+<br>
+
+<div align="left">
 
 ## Installation
 
@@ -41,3 +52,8 @@ then **Right-click** → **Quick Actions** → **Liquify**
 - New folders on automatically liquify
 - Toggle on and off from the menu bar icon
 
+</div>
+
+<div align="center">
+  <sub>2026 @ zupersun </sub>
+</div>
