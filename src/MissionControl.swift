@@ -158,3 +158,26 @@ final class MissionControlFade {
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
     }
 }
+
+extension Liquify {
+    /// Glass belongs to the Space it was made on, so it slides in with the Desktop: a window on every Space shows only
+    /// once a switch has ended, a moment after Finder's icons. On a Desktop without it (another desktop Space, or made
+    /// while a full-screen app showed) it comes here, in new windows: a window can't change Space.
+    func followSpace() {
+        guard desktopOnScreen() else { return }  // a full-screen app's Space: the glass waits on the Desktop's
+        for (path, old) in tiles where !old.isOnActiveSpace {
+            guard let content = old.contentView else { continue }
+            old.contentView = NSView()
+            old.orderOut(nil)
+            tiles[path] = window(old.frame, content)
+            views(content, tileID).first.map { tune($0, tries: 10) }  // in case the glass rebuilt its layers
+        }
+    }
+}
+
+/// Whether a Desktop is on screen (Finder's icons show), not a full-screen app's Space.
+private func desktopOnScreen() -> Bool {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+    return windows.contains { $0[kCGWindowOwnerName as String] as? String == "Finder"
+        && $0[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.desktopIconWindow)) }
+}

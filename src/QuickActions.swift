@@ -52,11 +52,12 @@ private func writeQuickAction(_ action: (name: String, request: String, symbol: 
         "AMProvides": ["Container": "List", "Types": ["com.apple.cocoa.string"]]]
     write(["AMDocumentVersion": "2", "actions": [["action": step]], "connectors": [String: Any](),
            "workflowMetaData": ["workflowTypeIdentifier": "com.apple.Automator.servicesMenu", "serviceApplicationBundleID": "com.apple.finder",
-                                "serviceInputTypeIdentifier": "com.apple.Automator.fileSystemObject.folder"]],
+                                "serviceInputTypeIdentifier": "com.apple.Automator.fileSystemObject"]],
           to: contents.appendingPathComponent("document.wflow"))
-    // Finder lists a Quick Action only with an icon.
+    // Finder lists a Quick Action only with an icon. Any items: Finder hides a folders-only one if a file is
+    // selected too (takeRequests skips all but folders).
     write(["NSServices": [["NSMenuItem": ["default": name], "NSMessage": "runWorkflowAsService", "NSIconName": "workflowCustomImageTemplate",
-                           "NSRequiredContext": ["NSApplicationIdentifier": "com.apple.finder"], "NSSendFileTypes": ["public.folder"]]]],
+                           "NSRequiredContext": ["NSApplicationIdentifier": "com.apple.finder"], "NSSendFileTypes": ["public.item"]]]],
           to: contents.appendingPathComponent("Info.plist"))
     try? symbolIcon(symbol, slashed: slashed)?.write(to: contents.appendingPathComponent("Resources/workflowCustomImageTemplate.png"))
     if status[statusKey(name)] == nil {

@@ -59,7 +59,7 @@ final class Liquify {
         tokens.append((NotificationCenter.default, NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                                 object: nil, queue: .main) { [weak self] _ in self?.watchClosely(for: 0.6) }))
         tokens.append((NSWorkspace.shared.notificationCenter, NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
-                                                                           object: nil, queue: .main) { [weak self] _ in self?.cutPictures(); self?.layoutSoon() }))  // its own wallpaper?
+                                                                           object: nil, queue: .main) { [weak self] _ in self?.followSpace(); self?.cutPictures(); self?.layoutSoon() }))
         if !finder.allowed {
             print("Without Accessibility permission, icons will update but there will be no live glass on the Desktop.")
         }
@@ -263,9 +263,9 @@ final class Liquify {
 
     // -- Desktop glass
 
-    /// Click-through window just above Finder's icons. Stationary, so it stays put when a wallpaper click moves
-    /// windows aside; Mission Control would still show it, so MissionControlFade fades it.
-    private func window(_ frame: CGRect, _ content: NSView) -> GlassWindow {
+    /// Click-through window just above Finder's icons, on this Space only (followSpace). Stationary: a wallpaper click
+    /// leaves it put; Mission Control would still show it, so MissionControlFade fades it.
+    func window(_ frame: CGRect, _ content: NSView) -> GlassWindow {
         let window = GlassWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.animationBehavior = .none  // no close animation over its replacement
@@ -274,7 +274,7 @@ final class Liquify {
         window.hasShadow = false
         window.ignoresMouseEvents = true
         window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
-        window.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .stationary]
+        window.collectionBehavior = [.ignoresCycle, .stationary]
         window.contentView = content
         window.orderFrontRegardless()
         window.forceActiveLook()
@@ -330,12 +330,9 @@ final class Liquify {
         heardQuietly = []
         pressing = true
         lastPress = now
-        // Finder selects on mouse down (not on the menu bar or Dock, nor on a selection: that is kept to drag).
-        if event.modifierFlags.isDisjoint(with: [.command, .shift]) && desktopShows(pressedAt)
-            && NSScreen.screens.first(where: { $0.frame.contains(pressedAt) })?.visibleFrame.contains(pressedAt) == true
-            && pressedOn.flatMap({ tiles[$0]?.contentView }).flatMap(cutSelected) != true {
-            for (path, window) in tiles { window.contentView.map { reselect($0, path == pressedOn) } }
-        }
+        // Finder selects a pressed folder at once; whatever it deselects, it reports (selectionChanged). Never guess
+        // "not selected": a click within a selection keeps it, and a wrong guess bares the box's edge for a moment.
+        if let pressedOn, let holder = tiles[pressedOn]?.contentView { reselect(holder, true) }
         if event.clickCount == 2, let pressedOn { standIn(pressedOn) }  // its window opens before Finder says so
         if event.type == .rightMouseDown || event.modifierFlags.contains(.control), let pressedOn { holdWhileMenu(pressedOn) }
         watchClosely(for: 0)
@@ -474,7 +471,7 @@ final class Liquify {
             let rect = pictureRect(frame, scale: scale), picture = pictures.picture(path, rect)
             setPicture(holder, picture, rect: rect.offsetBy(dx: -around.minX, dy: -around.minY))
             // Without its picture the glass would change as it comes: held back until cut (Finder's icon shows).
-            let held = picture == nil && reused == nil && (stepped || (standingIn[path] ?? 0) > now) && pictures.usable
+            let held = picture == nil && reused == nil && pictures.usable
             if stepped || held { holder.alphaValue = 0 }  // fades in below: no full-strength first frame
             fade(holder, missionControl.shown)
             if let reused {

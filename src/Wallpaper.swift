@@ -63,10 +63,11 @@ final class Pictures {
     private var failed: Wallpaper?  // couldn't be cut: not tried again
     private var cut: [String: (rect: CGRect, image: CGImage)] = [:]
     private var cutting = false
+    private var known = false       // until the first check, pictures may come
     private let work = DispatchQueue(label: "io.github.zupersun.liquidfolder.pictures", qos: .userInitiated)
 
-    /// Whether pictures can be cut, as of the last check.
-    var usable: Bool { wallpaper != nil && wallpaper != failed }
+    /// Whether pictures can be cut, as of the last check (before one: maybe, so new glass waits for it).
+    var usable: Bool { !known || (wallpaper != nil && wallpaper != failed) }
 
     /// The picture for `path` at `rect`, if cut.
     func picture(_ path: String, _ rect: CGRect) -> CGImage? { cut[path].flatMap { $0.rect == rect ? $0.image : nil } }
@@ -82,6 +83,8 @@ final class Pictures {
     }
 
     private func checked(_ now: Wallpaper?, _ wanted: [String: CGRect], _ ready: @escaping ([String]) -> Void) {
+        known = true
+        if now == nil || now == failed { ready([]) }  // none will come: glass held for one shows now
         if now != wallpaper {
             let dropped = Array(cut.keys)
             (wallpaper, cut) = (now, [:])
@@ -112,8 +115,10 @@ extension Liquify {
         var wanted: [String: CGRect] = [:]
         for (path, frame) in icons where tiles[path] != nil { wanted[path] = pictureRect(frame, scale: scale(of: frame)) }
         pictures.cut(wanted) { [weak self] paths in
-            paths.forEach { self?.givePicture($0) }
-            if !paths.isEmpty { self?.cutPictures() }  // more may have come meanwhile
+            guard let self else { return }
+            paths.forEach(givePicture)
+            if !paths.isEmpty { cutPictures() }  // more may have come meanwhile
+            if !pictures.usable { Array(awaiting.keys).forEach(reveal) }  // none will come
         }
     }
 
@@ -133,7 +138,9 @@ extension Liquify {
 
     /// Finder's Desktop selection changed: a selected folder's picture gives way to Finder's box (see setStandIn).
     func selectionChanged() {
-        guard let names = finder.selectedNames() else { return }
-        for (path, window) in tiles { window.contentView.map { reselect($0, names.contains((path as NSString).lastPathComponent)) } }
+        guard let states = finder.selected(among: tiles.keys.map { ($0 as NSString).lastPathComponent }) else { return }
+        for (path, window) in tiles {
+            if let selected = states[(path as NSString).lastPathComponent], let holder = window.contentView { reselect(holder, selected) }
+        }
     }
 }

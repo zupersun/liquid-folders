@@ -52,18 +52,19 @@ final class FinderDesktop {
         return ask(icon, "AXSelected").value as? Bool
     }
 
-    /// The selected Desktop items' file names; nil if Finder won't say.
-    func selectedNames() -> Set<String>? {
+    /// Which of `names` (Desktop items) are selected; nil if Finder won't say. Names without a known icon are left
+    /// out. Matched against the selected icons, so one question however many are selected.
+    func selected(among names: [String]) -> [String: Bool]? {
         guard allowed, !quiet else { return nil }
-        var names = Set<String>()
+        var chosen: [AXUIElement] = []
         for group in groups {
             let (selected, answered) = ask(group, "AXSelectedChildren")
             guard answered else { return nil }
-            for icon in selected as? [AXUIElement] ?? [] {
-                if let name = attribute(icon, "AXFilename") as? String { names.insert(name) }
-            }
+            chosen += selected as? [AXUIElement] ?? []
         }
-        return names
+        var found: [String: Bool] = [:]
+        for name in names { if let icon = icons[name] { found[name] = chosen.contains { CFEqual($0, icon) } } }
+        return found
     }
 
     /// Clears the Desktop selection after "Liquify", so the new glass shows as it will stay.

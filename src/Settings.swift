@@ -188,7 +188,8 @@ func takeRequests() -> Bool {
             let path = resolved(String(line))
             if request.hasPrefix("unliquify-") {
                 if folders.removeValue(forKey: path) != nil { NSWorkspace.shared.setIcon(nil, forFile: path, options: []) }
-            } else if problemWith(path: path, style: Style()) == nil {
+            } else if problemWith(path: path, style: Style()) == nil,  // files, and apps and other packages, stay as they are
+                      (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isPackageKey]).isPackage) != true {
                 folders[path] = folders[path] ?? Style()
                 // Drop any Finder customisation: it would show over the glass.
                 removexattr(path, "com.apple.icon.folder#S", 0)
